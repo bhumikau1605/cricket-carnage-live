@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cricket Carnage</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, * { cursor: none; }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      min-height: 100vh;
+      background-color: #0B1F2A;
+      color: #F5F5F5;
+      overflow-x: hidden;
+    }
+
+    #cursor {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      transform: translate(-50%, -50%);
+      width: 40px; height: 40px;
+    }
+    #cursor img {
+      width: 100%; height: 100%;
+      filter: drop-shadow(0 0 6px rgba(198,255,46,0.7)) invert(1);
+    }
+    @keyframes batSwing {
+      0%   { transform: rotate(0deg); }
+      30%  { transform: rotate(-45deg); }
+      60%  { transform: rotate(10deg); }
+      100% { transform: rotate(0deg); }
+    }
+    #cursor.swing img { animation: batSwing 0.35s ease forwards; }
+
+    .bg-image {
+      position: fixed; inset: 0; z-index: -2;
+      background: url('bg.png.jpg') center center / cover no-repeat;
+    }
+    .bg-overlay {
+      position: fixed; inset: 0; z-index: -1;
+      background: rgba(11,31,42,0.25);
+      pointer-events: none;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; padding: 30px 0 16px; }
+    .bat-icon { font-size: 2.2rem; }
+    header h1 {
+      font-family: 'Oswald', sans-serif;
+      font-size: clamp(2.5rem, 8vw, 4.5rem);
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #C6FF2E, #FFD54F, #C6FF2E);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 20px rgba(198,255,46,0.45));
+    }
+    header p { color: #CFCFCF; font-size: 0.9rem; letter-spacing: 3px; text-transform: uppercase; margin-top: 6px; }
+    .divider {
+      width: 200px; height: 2px;
+      background: linear-gradient(to right, transparent, #C6FF2E, #FFD54F, #C6FF2E, transparent);
+      margin: 14px auto;
+    }
+    .ball-deco {
+      display: inline-block; width: 10px; height: 10px;
+      background: radial-gradient(circle at 35% 35%, #c0392b, #8B1E1E);
+      border-radius: 50%; margin: 0 6px; vertical-align: middle;
+      box-shadow: 0 0 6px rgba(139,30,30,0.6);
+    }
+
+    /* ── Live indicator ── */
+    .live-bar {
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; margin-bottom: 18px;
+    }
+    .live-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #C6FF2E;
+      box-shadow: 0 0 8px #C6FF2E;
+      animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.4; transform: scale(0.7); }
+    }
+    .live-text { font-size: 0.78rem; letter-spacing: 2px; color: #C6FF2E; text-transform: uppercase; }
+
+    /* ── Controls ── */
+    .controls {
+      background: rgba(11,31,42,0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(198,255,46,0.25);
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin-bottom: 22px;
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .controls input {
+      flex: 1; min-width: 180px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(198,255,46,0.35);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: #F5F5F5; font-size: 1rem;
+      font-family: 'Roboto', sans-serif;
+      outline: none; transition: border-color 0.2s;
+    }
+    .controls input:focus { border-color: #FFD54F; }
+    .controls input::placeholder { color: #3A4F4A; }
+
+    .btn {
+      padding: 10px 20px; border: none; border-radius: 8px;
+      font-family: 'Oswald', sans-serif; font-size: 0.95rem;
+      letter-spacing: 1px; cursor: pointer; transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-add  { background: linear-gradient(135deg,#C6FF2E,#B8E61A); color: #0F2A1F; }
+    .btn-add:hover  { background: linear-gradient(135deg,#d4ff5a,#C6FF2E); transform: translateY(-1px); }
+    .btn-sort { background: linear-gradient(135deg,#D4AF37,#FFD54F); color: #0F2A1F; font-weight: 600; }
+    .btn-sort:hover { background: linear-gradient(135deg,#FFD54F,#D4AF37); transform: translateY(-1px); }
+    .btn-excel { background: linear-gradient(135deg,#1a6b3a,#25a85a); color: #fff; }
+    .btn-excel:hover { background: linear-gradient(135deg,#25a85a,#1a6b3a); transform: translateY(-1px); }
+
+    /* ── Table ── */
+    .table-wrap {
+      border-radius: 14px; overflow: hidden;
+      border: 1px solid rgba(198,255,46,0.2);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    table { width: 100%; border-collapse: collapse; }
+
+    thead tr { background: rgba(18,63,53,0.85); }
+    thead th {
+      font-family: 'Oswald', sans-serif;
+      font-size: 0.85rem; letter-spacing: 2px; text-transform: uppercase;
+      color: #C6FF2E; padding: 14px 12px; text-align: center;
+      border-bottom: 2px solid #B8E61A;
+    }
+    thead th:first-child { text-align: left; padding-left: 18px; }
+
+    tbody tr {
+      background: rgba(11,31,42,0.55);
+      transition: background 0.2s;
+      animation: rowIn 0.4s ease forwards;
+    }
+    @keyframes rowIn {
+      from { opacity: 0; transform: translateX(-18px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    tbody tr:nth-child(even) { background: rgba(18,63,53,0.4); }
+    tbody tr:hover { background: rgba(198,255,46,0.07); }
+
+    tbody td {
+      padding: 11px 12px; text-align: center;
+      border-bottom: 1px solid rgba(198,255,46,0.08);
+      vertical-align: middle;
+    }
+    tbody td:first-child {
+      text-align: left; padding-left: 18px;
+      font-family: 'Oswald', sans-serif; font-size: 1rem; color: #F5F5F5;
+    }
+
+    .rank {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 50%;
+      font-size: 0.78rem; font-weight: 700; margin-right: 8px;
+    }
+    .rank-1 { background: #D4AF37; color: #0F2A1F; box-shadow: 0 0 8px rgba(212,175,55,0.6); }
+    .rank-2 { background: #CFCFCF; color: #0F2A1F; }
+    .rank-3 { background: #cd7f32; color: #fff; }
+    .rank-n { background: rgba(198,255,46,0.1); color: #CFCFCF; }
+
+    .score-input {
+      width: 68px;
+      background: rgba(0,0,0,0.45);
+      border: 1px solid rgba(198,255,46,0.25);
+      border-radius: 6px; padding: 6px 6px;
+      color: #F5F5F5; font-size: 0.95rem; text-align: center;
+      outline: none; transition: border-color 0.2s;
+    }
+    .score-input:focus { border-color: #C6FF2E; }
+
+    .total-cell {
+      font-family: 'Oswald', sans-serif;
+      font-size: 1.2rem; font-weight: 600; color: #FFD54F;
+    }
+    .pos-cell {
+      font-family: 'Oswald', sans-serif;
+      font-size: 1rem; color: #CFCFCF;
+    }
+
+    .btn-remove {
+      background: rgba(139,30,30,0.3);
+      border: 1px solid rgba(139,30,30,0.5);
+      color: #e05555; border-radius: 6px;
+      padding: 5px 10px; font-size: 0.82rem;
+      transition: all 0.2s;
+    }
+    .btn-remove:hover { background: rgba(139,30,30,0.6); color: #fff; }
+
+    .empty-msg { text-align: center; padding: 40px; color: #3A4F4A; font-style: italic; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      background: rgba(18,63,53,0.95);
+      border: 1px solid #C6FF2E;
+      color: #C6FF2E; padding: 10px 24px;
+      border-radius: 30px; font-size: 0.88rem; letter-spacing: 1px;
+      opacity: 0; transition: opacity 0.3s;
+      z-index: 9998; pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── Footer ── */
+    footer { text-align: center; padding: 28px 0 18px; color: #3A4F4A; font-size: 0.78rem; letter-spacing: 1px; }
+
+    @media (max-width: 600px) {
+      .score-input { width: 52px; }
+      thead th, tbody td { padding: 9px 6px; }
+      .btn { padding: 9px 12px; font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="cursor"><img src="https://img.icons8.com/?size=100&id=13zzOsnFzFWn&format=png&color=000000" alt=""/></div>
+<div class="bg-image"></div>
+<div class="bg-overlay"></div>
+<canvas id="confettiCanvas" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:998;"></canvas>
+<div id="toast"></div>
+
+<div class="container">
+  <header>
+    <div class="bat-icon">🏏</div>
+    <h1>Cricket Carnage</h1>
+    <p><span class="ball-deco"></span> Tournament Scoreboard <span class="ball-deco"></span></p>
+    <div class="divider"></div>
+  </header>
+
+  <div class="live-bar">
+    <div class="live-dot"></div>
+    <span class="live-text">Live Scoreboard</span>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="teamInput" placeholder="Enter team name..." maxlength="30"/>
+    <button class="btn btn-add"   onclick="addTeam()">+ Add Team</button>
+    <button class="btn btn-sort"  onclick="sortTeams()">⬇ Sort by Total</button>
+    <button class="btn btn-excel" onclick="exportExcel()">⬇ Export Excel</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Position &nbsp; Team</th>
+          <th>Round 1</th>
+          <th>Round 2</th>
+          <th>Round 3</th>
+          <th>Total</th>
+          <th>Rank</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="teamTable">
+        <tr><td colspan="7" class="empty-msg">No teams yet. Add a team to get started! 🏏</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <span class="ball-deco"></span> Cricket Carnage &copy; Utsav 2026 <span class="ball-deco"></span>
+  </footer>
+</div>
+
+<!-- ── Cursor ───────────────────────────────────────────────────────────── -->
+<script>
+  const cursor = document.getElementById('cursor');
+  document.addEventListener('mousemove', e => {
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top  = e.clientY + 'px';
+  });
+  document.addEventListener('mousedown', () => {
+    cursor.classList.remove('swing');
+    void cursor.offsetWidth;
+    cursor.classList.add('swing');
+  });
+  cursor.addEventListener('animationend', () => cursor.classList.remove('swing'));
+</script>
+
+<!-- ── Sound ────────────────────────────────────────────────────────────── -->
+<script>
+  function playBatHit() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+      const bufLen = ctx.sampleRate * 0.16;
+      const buf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < bufLen; i++)
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 1.6);
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      const midFilter = ctx.createBiquadFilter();
+      midFilter.type = 'bandpass'; midFilter.frequency.value = 1800; midFilter.Q.value = 1.0;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.6, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      noise.connect(midFilter); midFilter.connect(noiseGain); noiseGain.connect(ctx.destination);
+      noise.start(now);
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(900, now);
+      osc.frequency.exponentialRampToValueAtTime(280, now + 0.12);
+      const oscGain = ctx.createGain();
+      oscGain.gain.setValueAtTime(0.38, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.connect(oscGain); oscGain.connect(ctx.destination);
+      osc.start(now); osc.stop(now + 0.14);
+    } catch(e) {}
+  }
+  document.addEventListener('mousedown', playBatHit);
+</script>
+
+<!-- ── Confetti ──────────────────────────────────────────────────────────── -->
+<script>
+  const confettiCanvas = document.getElementById('confettiCanvas');
+  const cctx = confettiCanvas.getContext('2d');
+  let particles = [];
+  const COLORS = ['#C6FF2E','#FFD54F','#D4AF37','#B8E61A','#F5F5F5','#8B1E1E','#CFCFCF'];
+
+  function spawnConfetti() {
+    confettiCanvas.width  = window.innerWidth;
+    confettiCanvas.height = window.innerHeight;
+    for (let i = 0; i < 180; i++) {
+      particles.push({
+        x: Math.random() * confettiCanvas.width, y: -10 - Math.random() * 80,
+        w: 6 + Math.random() * 8, h: 10 + Math.random() * 6,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        rot: Math.random() * Math.PI * 2,
+        vx: (Math.random() - 0.5) * 3, vy: 2.5 + Math.random() * 3.5,
+        vr: (Math.random() - 0.5) * 0.18, alpha: 1,
+      });
+    }
+    requestAnimationFrame(animateConfetti);
+  }
+
+  function animateConfetti() {
+    cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    particles = particles.filter(p => p.alpha > 0.02);
+    particles.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.vy += 0.07;
+      if (p.y > confettiCanvas.height * 0.75) p.alpha -= 0.025;
+      cctx.save();
+      cctx.globalAlpha = p.alpha;
+      cctx.translate(p.x, p.y); cctx.rotate(p.rot);
+      cctx.fillStyle = p.color;
+      cctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      cctx.restore();
+    });
+    if (particles.length > 0) requestAnimationFrame(animateConfetti);
+    else cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  }
+</script>
+
+<!-- ── Toast ─────────────────────────────────────────────────────────────── -->
+<script>
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+</script>
+
+<!-- ── Main App ───────────────────────────────────────────────────────────── -->
+<script>
+  // ⚠️ Replace with your Railway backend URL after deploy
+  const BACKEND = 'https://your-railway-app.up.railway.app';
+
+  const socket = io(BACKEND);
+  let teams = [];
+
+  socket.on('connect',        () => showToast('🟢 Connected — Live!'));
+  socket.on('disconnect',     () => showToast('🔴 Disconnected'));
+  socket.on('teams_updated',  data => { teams = data; render(); });
+
+  document.getElementById('teamInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTeam();
+  });
+
+  async function addTeam() {
+    const input = document.getElementById('teamInput');
+    const name = input.value.trim();
+    if (!name) return;
+    try {
+      const res = await fetch(`${BACKEND}/api/teams`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      if (data.error) { showToast('⚠️ ' + data.error); return; }
+      input.value = '';
+      showToast('✅ Team added!');
+    } catch(e) { showToast('❌ Error adding team'); }
+  }
+
+  async function updateScore(id, field, value) {
+    const team = teams.find(t => t._id === id);
+    if (!team) return;
+    const payload = { r1: team.r1, r2: team.r2, r3: team.r3, [field]: Number(value) || 0 };
+    try {
+      await fetch(`${BACKEND}/api/teams/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch(e) {}
+  }
+
+  async function removeTeam(id) {
+    try {
+      await fetch(`${BACKEND}/api/teams/${id}`, { method: 'DELETE' });
+      showToast('🗑️ Team removed');
+    } catch(e) { showToast('❌ Error removing team'); }
+  }
+
+  function sortTeams() {
+    teams = [...teams].sort((a, b) => b.total - a.total);
+    render();
+    if (teams.length > 0) spawnConfetti();
+    showToast('🏆 Sorted by Total!');
+  }
+
+  function rankClass(pos) {
+    if (pos === 1) return 'rank rank-1';
+    if (pos === 2) return 'rank rank-2';
+    if (pos === 3) return 'rank rank-3';
+    return 'rank rank-n';
+  }
+
+  function rankLabel(pos) {
+    if (pos === 1) return '🥇';
+    if (pos === 2) return '🥈';
+    if (pos === 3) return '🥉';
+    return pos;
+  }
+
+  function render() {
+    const tbody = document.getElementById('teamTable');
+    if (!teams.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-msg">No teams yet. Add a team to get started! 🏏</td></tr>';
+      return;
+    }
+    tbody.innerHTML = teams.map((team, i) => {
+      const pos = team.position || (i + 1);
+      return `
+      <tr>
+        <td><span class="${rankClass(pos)}">${pos}</span>${team.name}</td>
+        <td><input class="score-input" type="number" min="0" value="${team.r1}"
+          onchange="updateScore('${team._id}','r1',this.value)" placeholder="0"/></td>
+        <td><input class="score-input" type="number" min="0" value="${team.r2}"
+          onchange="updateScore('${team._id}','r2',this.value)" placeholder="0"/></td>
+        <td><input class="score-input" type="number" min="0" value="${team.r3}"
+          onchange="updateScore('${team._id}','r3',this.value)" placeholder="0"/></td>
+        <td class="total-cell">${team.total}</td>
+        <td class="pos-cell">${rankLabel(pos)}</td>
+        <td><button class="btn-remove" onclick="removeTeam('${team._id}')">✕ Remove</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function exportExcel() {
+    if (!teams.length) { showToast('⚠️ No teams to export'); return; }
+    const data = [
+      ['Position', 'Team', 'Round 1', 'Round 2', 'Round 3', 'Total'],
+      ...teams.map(t => [t.position || '', t.name, t.r1, t.r2, t.r3, t.total])
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{ wch: 10 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Scoreboard');
+    XLSX.writeFile(wb, 'Cricket_Carnage_Scores.xlsx');
+    showToast('📊 Excel downloaded!');
+  }
+</script>
+
+</body>
+</html>
