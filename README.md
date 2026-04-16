@@ -49,8 +49,6 @@ A real-time cricket tournament scoreboard with live updates powered by Socket.io
 
 Live at: [https://cricket-carnage-live.onrender.com](https://cricket-carnage-live.onrender.com)
 
-> Note: Hosted on Render's free tier — first load after inactivity may take ~30 seconds to wake up.
-
 ## License
 
-© Utsav 2026
+© Augment AI: Cricket Carnage | Utsav 2026
