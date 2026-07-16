@@ -2,6 +2,8 @@
 
 A real-time cricket tournament scoreboard with live updates powered by Socket.io.
 
+Live at: [https://cricket-carnage-live.onrender.com](https://cricket-carnage-live.onrender.com)
+
 ## Features
 
 - Live scoreboard updates across all connected clients
@@ -44,10 +46,6 @@ A real-time cricket tournament scoreboard with live updates powered by Socket.io
    ```
 
 5. Open `http://localhost:3001` in your browser.
-
-## Deployment
-
-Live at: [https://cricket-carnage-live.onrender.com](https://cricket-carnage-live.onrender.com)
 
 ## License
 
